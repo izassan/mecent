@@ -41,7 +41,8 @@ func dir2pdf(dir_path string) string{
                 pdf.Start(gopdf.Config{PageSize: rect})
                 gopdf_started = true
             }
-            pdf.AddPage()
+            pageOpt := gopdf.PageOption{PageSize: &rect}
+            pdf.AddPageWithOption(pageOpt)
             pdf.Image(file_path, 0, 0, &rect)
         }
     }

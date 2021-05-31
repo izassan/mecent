@@ -1,4 +1,4 @@
-module github.com/IRcpjs/golang_lighttools
+module github.com/izassan/mecent
 
 go 1.16
 

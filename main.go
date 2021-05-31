@@ -56,7 +56,7 @@ func main(){
     var dest_path string
     var src_path string
     app := &cli.App{
-        Name: "fsender",
+        Name: "mecent",
         Usage: "multi jpeg files convert to pdf. and media files send other directory",
         Flags: []cli.Flag{
             &cli.StringFlag{

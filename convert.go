@@ -5,14 +5,43 @@ import (
 	"log"
 	"os"
     "io"
+    "unicode/utf8"
+    "strings"
+    "strconv"
+    "io/fs"
     "image"
     _ "image/jpeg"
     _ "image/png"
     "regexp"
 	"path/filepath"
-	"strings"
 	"github.com/signintech/gopdf"
 )
+
+func sortdir(dir []fs.DirEntry) []fs.DirEntry{
+    sorted_dir := make([]fs.DirEntry, len(dir))
+    for _, file := range dir{
+        pagenum := 0
+        rate := 1
+        started := false
+        b := []byte(file.Name())
+        for len(b) > 0{
+            r, size := utf8.DecodeLastRune(b)
+            char :=  string(r)
+            if char == "."{
+                started = true
+            }else if started && "0" <= char && char <= "9"{
+                int_char, _ := strconv.Atoi(char)
+                pagenum = pagenum + int_char * rate
+                rate = rate * 10
+            }else if char == "_"{
+                break
+            }
+            b = b[:len(b)-size]
+        }
+        sorted_dir[pagenum] = file
+    }
+    return sorted_dir
+}
 
 func dir2pdf(dir_path string) string{
     re := regexp.MustCompile(`(?i)(.+\.(jpg|png))`)
@@ -20,6 +49,7 @@ func dir2pdf(dir_path string) string{
     pdf_path := filepath.Join(
         filepath.Dir(dir_path),filepath.Base(dir_path) + ".pdf")
     files, err := os.ReadDir(dir_path)
+    files = sortdir(files)
     if err != nil {
         panic(err)
     }

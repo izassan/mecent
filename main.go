@@ -49,7 +49,6 @@ func move_media(src_path string, dest_path string){
             panic(err)
         }
     }
-
 }
 
 func main(){
@@ -73,9 +72,20 @@ func main(){
                 Usage:   "set source path",
                 Destination: &src_path,
             },
+            &cli.BoolFlag{
+                Name: "remove",
+            },
         },
         Action: func(c *cli.Context) error {
             move_media(src_path, dest_path)
+            if c.Bool("remove") {
+                log.Print("remove directory...: ", src_path)
+                err := os.RemoveAll(src_path)
+                if err != nil{
+                    panic(err)
+                }
+                os.Mkdir(src_path, 766)
+            }
             return nil
         },
     }

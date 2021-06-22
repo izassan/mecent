@@ -15,15 +15,33 @@ func move_media(src_path string, dest_path string){
     if err != nil{
         panic(err)
     }
+    tmp_dir := filepath.Join(src_path, "tmp")
     os.Mkdir(dest_path, 0766)
+    os.Mkdir(tmp_dir, 0766)
     var transfer_file_path string
     for _, file := range files{
         file_path := filepath.Join(src_path, file.Name())
         if file.IsDir(){
+            log.Print("dir process: ", file.Name())
+            if file.Name() == "tmp"{
+                continue
+            }
             transfer_file_path = dir2pdf(file_path)
+            err := os.Rename(file_path, filepath.Join(tmp_dir, file.Name()))
+            if err != nil{
+                panic(err)
+            }
         }else if filepath.Ext(file.Name()) == ".zip"{
             dir_path := zip2dir(file_path)
             transfer_file_path = dir2pdf(dir_path)
+            err := os.Rename(file_path, filepath.Join(tmp_dir, file.Name()))
+            if err != nil{
+                panic(err)
+            }
+            err = os.Rename(dir_path, filepath.Join(tmp_dir, filepath.Base(dir_path)))
+            if err != nil{
+                panic(err)
+            }
         }else if re.MatchString(file_path){
             log.Print("match file: ", file_path)
             transfer_file_path = file_path

@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
     "io"
-    "unicode/utf8"
     "strings"
     "strconv"
     "io/fs"
@@ -18,41 +17,57 @@ import (
 )
 
 func sortdir(dir []fs.DirEntry) []fs.DirEntry{
+    // create memory for sorted directory
     sorted_dir := make([]fs.DirEntry, len(dir))
+
+    // define regex
+    re := regexp.MustCompile(`.+_(\d+?)\..+?`)
+    // put files
     for _, file := range dir{
-        pagenum := 0
-        rate := 1
-        started := false
-        b := []byte(file.Name())
-        for len(b) > 0{
-            r, size := utf8.DecodeLastRune(b)
-            char :=  string(r)
-            if char == "."{
-                started = true
-            }else if started && "0" <= char && char <= "9"{
-                int_char, _ := strconv.Atoi(char)
-                pagenum = pagenum + int_char * rate
-                rate = rate * 10
-            }else if char == "_"{
-                break
-            }
-            b = b[:len(b)-size]
-        }
-        sorted_dir[pagenum] = file
+        match_result := re.FindAllStringSubmatch(file.Name(), -1)
+        file_number_str := match_result[0][1]
+        file_number, _ := strconv.Atoi(file_number_str)
+        sorted_dir[file_number] = file
     }
+
+    // return sorted_dir
     return sorted_dir
 }
 
-func dir2pdf(dir_path string) string{
-    re := regexp.MustCompile(`(?i)(.+\.(jpg|png))`)
-    pdf := gopdf.GoPdf{}
+func dir2pdf(dir_path, path_to_dir_pdf, path_to_dir_old string) string{
+
+    // generate path to pdf
     pdf_path := filepath.Join(
-        filepath.Dir(dir_path),filepath.Base(dir_path) + ".pdf")
+        path_to_dir_pdf,filepath.Base(dir_path) + ".pdf")
+
+    // read files and sort
     files, err := os.ReadDir(dir_path)
     files = sortdir(files)
     if err != nil {
         panic(err)
     }
+
+    generate_pdf(dir_path, pdf_path, files)
+
+    // move to old directory
+    path_to_old := filepath.Join(path_to_dir_old, filepath.Base(dir_path))
+    err = os.Rename(dir_path, path_to_old)
+    if err != nil{
+        panic(err)
+    }
+
+    // return pdf path string
+    return pdf_path
+}
+
+func generate_pdf(dir_path string, pdf_path string, files []fs.DirEntry){
+    // define regex
+    re := regexp.MustCompile(`(?i)(.+\.(jpg|png))`)
+
+    // init GoPdf
+    pdf := gopdf.GoPdf{}
+
+    // generate pdf file
     gopdf_started := false
     for _, file := range files{
         file_path := filepath.Join(dir_path, file.Name())
@@ -77,20 +92,32 @@ func dir2pdf(dir_path string) string{
         }
     }
     pdf.WritePdf(pdf_path)
-    log.Print("convert dir to pdf: ", dir_path)
-    return pdf_path
 }
 
-func zip2dir(zip_path string) string{
-    log.Print("convert zip to dir: ", zip_path)
+func zip2dir(zip_path, path_to_dir_old string) string{
     dir_name := strings.Replace(zip_path, ".zip", "", -1)
-    os.Mkdir(dir_name, 0766)
     unzip(zip_path, dir_name)
+    path_to_old := filepath.Join(path_to_dir_old, filepath.Base(zip_path))
+    err := os.Rename(zip_path, path_to_old)
+    if err != nil{
+        panic(err)
+    }
     return dir_name
 }
 
 func unzip(src, dest string) error {
+    // check exist extracted directory
+    if _, err := os.Stat(dest); err != nil{
+        // if not exist, create directory
+        err := os.Mkdir(dest, 0777)
+        if err != nil{
+            panic(err)
+        }
+    }
+
+    // unzip
     r, err := zip.OpenReader(src)
+    defer r.Close()
     if err != nil {
         log.Print("zip.OpenReader error")
         panic(err)
@@ -103,7 +130,6 @@ func unzip(src, dest string) error {
         }
         defer rc.Close()
         path := filepath.Join(dest, f.Name)
-        log.Print("path: ", path)
         if f.FileInfo().IsDir(){
             os.MkdirAll(path, f.Mode())
         }else{

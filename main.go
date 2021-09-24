@@ -9,72 +9,167 @@ import(
     "github.com/urfave/cli/v2"
 )
 
-func move_media(src_path string, dest_path string){
-    re := regexp.MustCompile(`(?i)(.+\.(jpg|png|gif|mp4))`)
+
+func copy_to_dest(src_path, dest_path string){
+    // check exist dest directory
+    if _, err := os.Stat(dest_path); err != nil{
+        // if not exist, create directory
+        err := os.Mkdir(dest_path, 0777)
+        if err != nil{
+            panic(err)
+        }
+    }
+
+    // open source file
+    src_file, err := os.Open(src_path)
+    if err != nil{
+        panic(err)
+    }
+    defer src_file.Close()
+
+    // open destination file
+    path_to_dest := filepath.Join(dest_path, filepath.Base(src_path))
+    dest_file, err := os.Create(path_to_dest)
+    if err != nil{
+        panic(err)
+    }
+    defer dest_file.Close()
+
+    // execute copy process
+    _, err = io.Copy(dest_file, src_file)
+    if err != nil{
+        panic(err)
+    }
+}
+
+func generate_directories(src_path string) (string, string){
+    // generate directory path
+    pdf_dir := filepath.Join(src_path, "pdf")
+    old_dir := filepath.Join(src_path, "old")
+
+    // check exist pdf directory
+    if _, err := os.Stat(pdf_dir); err != nil{
+        // if not exist, create directory
+        err := os.Mkdir(pdf_dir, 0777)
+        if err != nil{
+            panic(err)
+        }
+    }
+
+    // check exist old directory
+    if _, err := os.Stat(old_dir); err != nil{
+        // if not exist, create directory
+        err := os.Mkdir(old_dir, 0777)
+        if err != nil{
+            panic(err)
+        }
+    }
+
+    return pdf_dir, old_dir
+}
+
+func convert_mediafiles(src_path, dest_path string){
+    // define regex
+    regex_move_only := regexp.MustCompile(`(?i)(.+\.(jpg|png|gif|mp4|pdf))`)
+    regex_zip_pattern := regexp.MustCompile(`(?i)(.+\.(zip))`)
+
+    // read files in src_path
     files, err := os.ReadDir(src_path)
     if err != nil{
         panic(err)
     }
-    tmp_dir := filepath.Join(src_path, "tmp")
-    os.Mkdir(dest_path, 0766)
-    os.Mkdir(tmp_dir, 0766)
-    var transfer_file_path string
+
+    // predefine variable
+    var path_to_file string
+    var path_to_directory string
+    var path_to_pdf string
+    var path_copy_src string
+
+    // generate pdf and old directory
+    path_to_dir_pdf, path_to_old := generate_directories(src_path)
+
+    // process all files in src_path
     for _, file := range files{
-        file_path := filepath.Join(src_path, file.Name())
+        // generate file path
+        path_to_file = filepath.Join(src_path, file.Name())
+
+        // process directory pattern
         if file.IsDir(){
-            log.Print("dir process: ", file.Name())
-            if file.Name() == "tmp"{
+            // skip old  and pdf directory
+            if path_to_file == path_to_old || path_to_file == path_to_dir_pdf{
                 continue
             }
-            transfer_file_path = dir2pdf(file_path)
-            err := os.Rename(file_path, filepath.Join(tmp_dir, file.Name()))
-            if err != nil{
-                panic(err)
-            }
-        }else if filepath.Ext(file.Name()) == ".zip"{
-            dir_path := zip2dir(file_path)
-            transfer_file_path = dir2pdf(dir_path)
-            err := os.Rename(file_path, filepath.Join(tmp_dir, file.Name()))
-            if err != nil{
-                panic(err)
-            }
-            err = os.Rename(dir_path, filepath.Join(tmp_dir, filepath.Base(dir_path)))
-            if err != nil{
-                panic(err)
-            }
-        }else if re.MatchString(file_path){
-            log.Print("match file: ", file_path)
-            transfer_file_path = file_path
+
+            // output log
+            print_process_pattern("directory", file.Name())
+
+            // main process
+            path_to_pdf = dir2pdf(path_to_file, path_to_dir_pdf, path_to_old)
+
+            // set path_copy_src
+            path_copy_src = path_to_pdf
+
+        // process zip pattern
+        }else if regex_zip_pattern.MatchString(file.Name()){
+            // output log
+            print_process_pattern("zip", file.Name())
+
+            path_to_directory = zip2dir(path_to_file, path_to_old)
+            path_to_pdf = dir2pdf(path_to_directory, path_to_dir_pdf, path_to_old)
+
+            // set path_copy_src
+            path_copy_src = path_to_pdf
+
+        // process other media(jpg, png, gif, mp4) pattern
+        }else if regex_move_only.MatchString(file.Name()){
+            // output log
+            print_process_pattern("other_media", file.Name())
+
+            // set path_copy_src
+            path_copy_src = path_to_file
+
+        // process not media pattern(unsupported media pattern)
         }else{
-            continue
-        }
-        log.Print(transfer_file_path)
-        transfer_file, err := os.Open(transfer_file_path)
-        dest_file_path := filepath.Join(dest_path, filepath.Base(transfer_file_path))
-        if err != nil{
-            panic(err)
-        }
-        defer transfer_file.Close()
+            // output log
+            print_process_pattern("not media", file.Name())
 
-        dst, err := os.Create(dest_file_path)
-        if err != nil{
-            panic(err)
-        }
-        defer dst.Close()
+            // set path_copy_src
+            path_copy_src = ""
 
-        _, err = io.Copy(dst, transfer_file)
-        if err != nil{
-            panic(err)
+        }
+
+        // dest directory exist check
+        if _, err := os.Stat(dest_path); err != nil{
+            // if not exist, create directory
+            err := os.Mkdir(dest_path, 0777)
+            if err != nil{
+                panic(err)
+            }
+        }
+
+        // copy to dest_path
+        if path_copy_src != ""{
+            copy_to_dest(path_copy_src, dest_path)
         }
     }
 }
 
+func print_process_pattern(process_pattern, file_path string){
+    log.Print(
+        "file: ",
+        filepath.Base(file_path),
+        " ",
+        "process_pattern: ",
+        process_pattern)
+}
+
 func main(){
+    // define cli
     var dest_path string
     var src_path string
     app := &cli.App{
         Name: "mecent",
-        Usage: "multi jpeg files convert to pdf. and media files send other directory",
+        Usage: "media files convert to pdf. and media files send other directory",
         Flags: []cli.Flag{
             &cli.StringFlag{
                 Name:   "dest_path",
@@ -90,20 +185,9 @@ func main(){
                 Usage:   "set source path",
                 Destination: &src_path,
             },
-            &cli.BoolFlag{
-                Name: "remove",
-            },
         },
         Action: func(c *cli.Context) error {
-            move_media(src_path, dest_path)
-            if c.Bool("remove") {
-                log.Print("remove directory...: ", src_path)
-                err := os.RemoveAll(src_path)
-                if err != nil{
-                    panic(err)
-                }
-                os.Mkdir(src_path, 766)
-            }
+            convert_mediafiles(src_path, dest_path)
             return nil
         },
     }
